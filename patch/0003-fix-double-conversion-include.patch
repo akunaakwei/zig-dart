@@ -1,0 +1,13 @@
+diff --git a/runtime/vm/double_conversion.cc b/runtime/vm/double_conversion.cc
+index ca299977544..96a2f88972b 100644
+--- a/runtime/vm/double_conversion.cc
++++ b/runtime/vm/double_conversion.cc
+@@ -4,7 +4,7 @@
+ 
+ #include "vm/double_conversion.h"
+ 
+-#include "../../third_party/double-conversion/src/double-conversion.h"
++#include "double-conversion/double-conversion.h"
+ 
+ #include "vm/exceptions.h"
+ #include "vm/globals.h"

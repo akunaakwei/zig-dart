@@ -1,0 +1,44 @@
+diff --git a/runtime/bin/platform_win.cc b/runtime/bin/platform_win.cc
+index 3fb78c5af3c..2c3806a9ed2 100644
+--- a/runtime/bin/platform_win.cc
++++ b/runtime/bin/platform_win.cc
+@@ -25,7 +25,9 @@
+ #include "bin/utils.h"
+ #include "bin/utils_win.h"
+ 
++#if defined(_MSC_VER) && !defined(__clang__)
+ #pragma comment(lib, "wbemuuid.lib")
++#endif
+ 
+ using Microsoft::WRL::ComPtr;
+ 
+@@ -46,12 +48,14 @@ class PlatformWin {
+     // Ensure no dialog boxes for assertions, errors and warnings in the CRT
+     // in Debug builds.
+     // See: https://msdn.microsoft.com/en-us/library/1y71x448.aspx
++#ifdef defined(_MSC_VER) && !defined(__clang__)  
+     _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_DEBUG | _CRTDBG_MODE_FILE);
+     _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
+     _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_DEBUG | _CRTDBG_MODE_FILE);
+     _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+     _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_DEBUG | _CRTDBG_MODE_FILE);
+     _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
++#endif    
+ 
+     // Set location where the C runtime writes an error message for an error
+     // that might end the program.
+diff --git a/runtime/bin/security_context_win.cc b/runtime/bin/security_context_win.cc
+index bc2ee7ef389..9055efc7e0e 100644
+--- a/runtime/bin/security_context_win.cc
++++ b/runtime/bin/security_context_win.cc
+@@ -21,8 +21,10 @@
+ #include "platform/syslog.h"
+ 
+ #ifndef DART_TARGET_OS_WINDOWS_UWP
++#if defined(_MSC_VER) && !defined(__clang__)
+ #pragma comment(lib, "crypt32.lib")
+ #endif
++#endif
+ 
+ namespace dart {
+ namespace bin {

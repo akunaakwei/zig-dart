@@ -1,0 +1,29 @@
+diff --git a/runtime/bin/socket_base_win.h b/runtime/bin/socket_base_win.h
+index 9bfbe8c99c7..a8918819cb8 100644
+--- a/runtime/bin/socket_base_win.h
++++ b/runtime/bin/socket_base_win.h
+@@ -14,5 +14,9 @@
+ #include <mswsock.h>
+ #include <winsock2.h>
+ #include <ws2tcpip.h>
++#undef interface
++#undef X509_NAME
++#undef X509_EXTENSIONS
++#undef PKCS7_SIGNER_INFO
+ 
+ #endif  // RUNTIME_BIN_SOCKET_BASE_WIN_H_
+diff --git a/runtime/platform/globals.h b/runtime/platform/globals.h
+index 2996d476b08..4301828b1f3 100644
+--- a/runtime/platform/globals.h
++++ b/runtime/platform/globals.h
+@@ -71,6 +71,10 @@
+ #include <versionhelpers.h>
+ #include <windows.h>
+ #include <winsock2.h>
++#undef interface
++#undef X509_NAME
++#undef X509_EXTENSIONS
++#undef PKCS7_SIGNER_INFO
+ #endif  // defined(_WIN32)
+ 
+ #if !defined(_WIN32)

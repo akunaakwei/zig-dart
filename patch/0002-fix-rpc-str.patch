@@ -1,0 +1,50 @@
+diff --git a/runtime/bin/directory_win.cc b/runtime/bin/directory_win.cc
+index 460ae694c90..a9b837c2792 100644
+--- a/runtime/bin/directory_win.cc
++++ b/runtime/bin/directory_win.cc
+@@ -435,14 +435,14 @@ static const char* CreateTempFromUUID(const char* prefix) {
+   if ((status != RPC_S_OK) && (status != RPC_S_UUID_LOCAL_ONLY)) {
+     return nullptr;
+   }
+-  wchar_t* uuid_string;
++  RPC_WSTR uuid_string;
+   status = UuidToStringW(&uuid, &uuid_string);
+   if (status != RPC_S_OK) {
+     return nullptr;
+   }
+ 
+   // RPC_WSTR is an unsigned short*, so we cast to wchar_t*.
+-  if (!path.AddW(uuid_string)) {
++  if (!path.AddW(reinterpret_cast<wchar_t*>(uuid_string))) {
+     return nullptr;
+   }
+   RpcStringFreeW(&uuid_string);
+diff --git a/runtime/bin/file_win.cc b/runtime/bin/file_win.cc
+index 84349659449..3622d29f033 100644
+--- a/runtime/bin/file_win.cc
++++ b/runtime/bin/file_win.cc
+@@ -746,7 +746,7 @@ static std::unique_ptr<wchar_t[]> GetDirectoryPath(
+ }
+ 
+ static void FreeUUID(wchar_t* ptr) {
+-  RpcStringFreeW(&ptr);
++  RpcStringFreeW(reinterpret_cast<RPC_WSTR*>(&ptr));
+ }
+ 
+ static std::unique_ptr<wchar_t, decltype(FreeUUID)*> GenerateUUIDString() {
+@@ -755,13 +755,13 @@ static std::unique_ptr<wchar_t, decltype(FreeUUID)*> GenerateUUIDString() {
+   if ((status != RPC_S_OK) && (status != RPC_S_UUID_LOCAL_ONLY)) {
+     return {nullptr, nullptr};
+   }
+-  wchar_t* uuid_string;
++  RPC_WSTR uuid_string;
+   status = UuidToStringW(&uuid, &uuid_string);
+   if (status != RPC_S_OK) {
+     return {nullptr, nullptr};
+   }
+ 
+-  return {uuid_string, &FreeUUID};
++  return {reinterpret_cast<wchar_t*>(uuid_string), &FreeUUID};
+ }
+ 
+ // This function will copy the |src| file to a temporary file in the

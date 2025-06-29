@@ -1,0 +1,16 @@
+diff --git a/runtime/bin/native_assets_api_impl.cc b/runtime/bin/native_assets_api_impl.cc
+index 3834c68dcdb..2720b682872 100644
+--- a/runtime/bin/native_assets_api_impl.cc
++++ b/runtime/bin/native_assets_api_impl.cc
+@@ -26,9 +26,9 @@ namespace dart {
+ namespace bin {
+ 
+ #define SET_ERROR_MSG(error_msg, format, ...)                                  \
+-  intptr_t len = snprintf(nullptr, 0, format, __VA_ARGS__);                    \
++  intptr_t len = snprintf(nullptr, 0, format __VA_OPT__(,) __VA_ARGS__);       \
+   char* msg = reinterpret_cast<char*>(malloc(len + 1));                        \
+-  snprintf(msg, len + 1, format, __VA_ARGS__);                                 \
++  snprintf(msg, len + 1, format __VA_OPT__(,) __VA_ARGS__);                    \
+   *error_msg = msg
+ 
+ #if defined(DART_TARGET_OS_WINDOWS)
