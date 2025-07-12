@@ -69,6 +69,7 @@ pub fn build(b: *std.Build) void {
     const upstream_dep = b.dependency("dart", .{});
     const third_party = upstream_dep.path("third_party");
     const pkg = upstream_dep.path("pkg");
+    b.addNamedLazyPath("pkg", pkg);
 
     const dart_patch = PatchStep.create(b, .{
         .root_directory = upstream_dep.path("runtime"),
@@ -82,6 +83,7 @@ pub fn build(b: *std.Build) void {
     dart_patch.addPatch(b.path("patch/0004-fix-msvc-only.patch"));
     dart_patch.addPatch(b.path("patch/0005-va-args.patch"));
     const runtime = dart_patch.getDirectory();
+    b.addNamedLazyPath("runtime", runtime);
 
     const native_icu_dep = b.dependency("icu", .{
         .target = native_target,
@@ -314,6 +316,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const libdart_platform_precompiler = library_libdart_platform(b, .{
+        .name = "libdart_platform_precompiler",
         .target = native_target,
         .optimize = optimize,
         .flags = &_precompiler_config,
@@ -335,6 +338,7 @@ pub fn build(b: *std.Build) void {
         .target = native_target,
         .optimize = optimize,
     });
+    b.installArtifact(libdart_builtin);
     libdart_builtin.linkLibCpp();
     libdart_builtin.addIncludePath(runtime);
     inline for (builtin_impl_sources) |src| {
@@ -478,9 +482,11 @@ pub fn build(b: *std.Build) void {
     package_config_step.add("typed_data", core_dep.path("pkgs/typed_data"), "lib");
 
     const package_config = package_config_step.getPath();
+    b.addNamedLazyPath("package_config.json", package_config);
 
     if (maybe_prebuilt_dart_dep) |prebuilt_dart_dep| {
         const prebuilt_dart_exe = if (native_target.result.os.tag != .windows) prebuilt_dart_dep.path("bin/dart") else prebuilt_dart_dep.path("bin/dart.exe");
+        b.addNamedLazyPath("prebuilt_dart", prebuilt_dart_exe);
 
         const vm_platform_dill = vm_platform_dill_option orelse platform_dill: {
             const output, _ = gen_vm_platform(b, .{
@@ -513,6 +519,7 @@ pub fn build(b: *std.Build) void {
             .symbol = "kDartVmSnapshotData",
             .executable = false,
         });
+        b.addNamedLazyPath("vm_snapshot_data_linkable", vm_snapshot_data_linkable);
         const vm_snapshot_instructions_linkable = bin_to_linkable(b, .{
             .exe = bin_to_linkable_exe,
             .target = target_triplet,
@@ -521,6 +528,7 @@ pub fn build(b: *std.Build) void {
             .symbol = "kDartVmSnapshotInstructions",
             .executable = true,
         });
+        b.addNamedLazyPath("vm_snapshot_instructions_linkable", vm_snapshot_instructions_linkable);
 
         const isolate_snapshot_data_linkable = bin_to_linkable(b, .{
             .exe = bin_to_linkable_exe,
@@ -530,6 +538,7 @@ pub fn build(b: *std.Build) void {
             .symbol = "kDartCoreIsolateSnapshotData",
             .executable = false,
         });
+        b.addNamedLazyPath("isolate_snapshot_data_linkable", isolate_snapshot_data_linkable);
         const isolate_snapshot_instructions_linkable = bin_to_linkable(b, .{
             .exe = bin_to_linkable_exe,
             .target = target_triplet,
@@ -538,6 +547,7 @@ pub fn build(b: *std.Build) void {
             .symbol = "kDartCoreIsolateSnapshotInstructions",
             .executable = true,
         });
+        b.addNamedLazyPath("isolate_snapshot_instructions_linkable", isolate_snapshot_instructions_linkable);
 
         const platform_strong_dill_linkable = bin_to_linkable(b, .{
             .exe = bin_to_linkable_exe,
@@ -548,7 +558,7 @@ pub fn build(b: *std.Build) void {
             .size_symbol = "kPlatformStrongDillSize",
             .executable = false,
         });
-
+        b.addNamedLazyPath("platform_strong_dill_linkable", platform_strong_dill_linkable);
         const kernel_service_dill_linkable = bin_to_linkable(b, .{
             .exe = bin_to_linkable_exe,
             .target = target_triplet,
@@ -558,6 +568,7 @@ pub fn build(b: *std.Build) void {
             .size_symbol = "kKernelServiceDillSize",
             .executable = false,
         });
+        b.addNamedLazyPath("kernel_service_dill_linkable", kernel_service_dill_linkable);
 
         const libdart_jit = library_libdart(b, .{
             .name = "libdart_jit",
@@ -567,19 +578,23 @@ pub fn build(b: *std.Build) void {
             .runtime = runtime,
             .version_cc = version_cc,
         });
+        b.installArtifact(libdart_jit);
         const libdart_platform_jit = library_libdart_platform(b, .{
+            .name = "libdart_platform_jit",
             .target = target,
             .optimize = optimize,
             .flags = &_jit_config,
             .runtime = runtime,
             .version_cc = version_cc,
         });
+        b.installArtifact(libdart_platform_jit);
 
         const standalone_dart_io = b.addStaticLibrary(.{
             .name = "standalone_dart_io",
             .target = native_target,
             .optimize = optimize,
         });
+        b.installArtifact(standalone_dart_io);
         standalone_dart_io.linkLibCpp();
         standalone_dart_io.linkLibrary(native_z);
         standalone_dart_io.linkLibrary(native_ssl);
@@ -622,11 +637,13 @@ pub fn build(b: *std.Build) void {
             .icuuc = native_icuuc,
             .libdouble_conversion = native_libdouble_conversion,
         });
+        b.installArtifact(libdart_vm_jit);
         const libdart_platform_no_tsan_jit = b.addStaticLibrary(.{
-            .name = "dart_platform_no_tsan_jit",
+            .name = "libdart_platform_no_tsan_jit",
             .target = native_target,
             .optimize = optimize,
         });
+        b.installArtifact(libdart_platform_no_tsan_jit);
         libdart_platform_no_tsan_jit.root_module.sanitize_thread = false;
         libdart_platform_no_tsan_jit.linkLibCpp();
         libdart_platform_no_tsan_jit.addIncludePath(runtime);
@@ -643,6 +660,7 @@ pub fn build(b: *std.Build) void {
             .flags = &_jit_config,
             .runtime = runtime,
         });
+        b.installArtifact(libdart_lib_jit);
 
         const libdart_compiler_jit = library_libdart_compiler(b, .{
             .name = "libdart_compiler_jit",
@@ -651,12 +669,14 @@ pub fn build(b: *std.Build) void {
             .flags = &_jit_config,
             .runtime = runtime,
         });
+        b.installArtifact(libdart_compiler_jit);
 
         const crashpad = b.addStaticLibrary(.{
             .name = "crashpad",
             .target = target,
             .optimize = optimize,
         });
+        b.installArtifact(crashpad);
         crashpad.linkLibCpp();
         crashpad.addIncludePath(runtime);
         crashpad.addCSourceFiles(.{
@@ -670,6 +690,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+        b.installArtifact(native_assets_api);
         native_assets_api.linkLibCpp();
         native_assets_api.addIncludePath(runtime);
         inline for (native_assets_impl_sources) |src| {
@@ -684,6 +705,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+        b.installArtifact(observatory);
         observatory.linkLibCpp();
         observatory.addIncludePath(runtime);
         observatory.addCSourceFiles(.{
@@ -982,6 +1004,7 @@ fn library_libdart(b: *std.Build, options: struct {
 }
 
 fn library_libdart_platform(b: *std.Build, options: struct {
+    name: []const u8,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     flags: []const []const u8,
@@ -989,7 +1012,7 @@ fn library_libdart_platform(b: *std.Build, options: struct {
     version_cc: LazyPath,
 }) *std.Build.Step.Compile {
     const lib = b.addStaticLibrary(.{
-        .name = "libdart_platform",
+        .name = options.name,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -1113,12 +1136,13 @@ fn library_libdart_lib(b: *std.Build, options: struct {
     return lib;
 }
 
-pub fn gen_vm_platform(b: *std.Build, options: struct {
+fn gen_vm_platform(b: *std.Build, options: struct {
     dart_exe: LazyPath,
     pkg: LazyPath,
     package_config: LazyPath,
     is_product: bool,
     exclude_source: bool,
+    libraries: ?[]const u8 = null,
 }) std.meta.Tuple(&.{ LazyPath, LazyPath }) {
     const cmd = std.Build.Step.Run.create(b, "run dart");
     cmd.addFileArg(options.dart_exe);
@@ -1134,9 +1158,13 @@ pub fn gen_vm_platform(b: *std.Build, options: struct {
     if (options.exclude_source) {
         cmd.addArg("--exclude-source");
     }
+    if (options.libraries) |libraries| {
+        cmd.addArg(libraries);
+    } else {
     cmd.addArg("--single-root-scheme=org-dartlang-sdk");
     cmd.addPrefixedDirectoryArg("--single-root-base=", options.pkg.path(b, ".."));
     cmd.addArg("org-dartlang-sdk:///sdk/lib/libraries.json");
+    }
     _ = cmd.addOutputFileArg("vm_outline_strong.dill");
     const vm_platform = cmd.addOutputFileArg("vm_platform_strong.dill");
     const vm_outline = cmd.addOutputFileArg("vm_outline_strong.dill");
