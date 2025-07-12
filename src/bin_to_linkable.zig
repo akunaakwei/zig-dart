@@ -143,7 +143,7 @@ pub fn main() !void {
         try print(&output, ".size {s}, .-{s}\n", .{ symbol_name, symbol_name });
     }
     if (res.args.size_symbol_name) |size_symbol_name| {
-        const is64bit = Target.ptrBitWidth(target) == 64;
+        const is64bit = Target.ptrBitWidth(&target) == 64;
 
         if (target.os.tag == .windows and !target.abi.isGnu()) {
             try print(&output, "public {s}\n", .{size_symbol_name});

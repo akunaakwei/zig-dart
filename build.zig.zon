@@ -49,12 +49,12 @@
             .lazy = true,
         },
         .patch = .{
-            .url = "https://github.com/akunaakwei/zig-patch/archive/71c6f1b6c766e4fa7876d2623d56c9db296bb322.tar.gz",
-            .hash = "patch-2.6.1-po1jOVxtAADJB8T1dZz_iYSc-j1gKB7-G5_nKgE16Pex",
+            .url = "https://github.com/akunaakwei/zig-patch/archive/01eedd80cdcbb0e19050f47de85369d749e2bf72.tar.gz",
+            .hash = "patch-2.6.1-po1jOTtuAACryi5UWeoraHP4f0s5uMxYAY8qufUEqsK4",
         },
         .icu = .{
-            .url = "https://github.com/akunaakwei/zig-icu/archive/3abfc3861609ee2344f94a1543c37dec58782188.tar.gz",
-            .hash = "icu-77.1.0-b1DbVNGsAAAUxC2cQvSsBQmHs3HiPNx9uVfNo7hHZMEv",
+            .url = "https://github.com/akunaakwei/zig-icu/archive/32525a072121cb75c8aa6e72bc664eda40d31692.tar.gz",
+            .hash = "icu-77.1.0-b1DbVGKpAACA0ZDJf6gn3mvUUGfqj34yOHxdkm38bGn8",
         },
         .z = .{
             .url = "https://github.com/akunaakwei/zig-z/archive/9b4f0242e17bd3e14fc2dea54af9444752b899f4.tar.gz",
@@ -73,12 +73,12 @@
             .hash = "mimalloc-3.0.3-ayYwXNAOAACdkorEWufCMN7QPilc-uKvvoP7WhnwgL8-",
         },
         .zeit = .{
-            .url = "https://github.com/rockorager/zeit/archive/5429d2a108053d9ae9de00035dc1749b926b7649.tar.gz",
-            .hash = "zeit-0.6.0-5I6bk697AgAjrCWnmInbXTZ98avC1JtELxiYd-YU9cc2",
+            .url = "https://github.com/akunaakwei/zig-zeit/archive/ae95cbe115cde784776c781ff82e9ad4c11eb3a5.tar.gz",
+            .hash = "zeit-0.6.0-5I6bk617AgD0z21eiqLEcakCupoC7zxJuzw_XhthqhGZ",
         },
         .comsupp = .{
-            .url = "https://github.com/akunaakwei/zig-comsupp/archive/45a1ca6a0a6a4ab4e14346c9569d7cdfa4324cd9.tar.gz",
-            .hash = "comsupp-0.4.15-4BppAygSAABYwn_f8nUCgpubG0if1PpmgUkZZThhfESd",
+            .url = "https://github.com/akunaakwei/zig-comsupp/archive/579885355601d071cd7514bb0901d6cbe8e402ed.tar.gz",
+            .hash = "comsupp-0.4.15-4BppAygSAACkJ_j-FrlDfhGgSpO1v0nZxp3F6EPvhVF5",
             .lazy = true,
         },
         .dart_tools = .{

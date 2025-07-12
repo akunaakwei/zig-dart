@@ -107,7 +107,7 @@ fn makeSnapshotHashString(runtime_dir: []const u8, vm_snapshot_files: []const []
     var hash = std.crypto.hash.Md5.init(.{});
     for (vm_snapshot_files) |file_name| {
         const dir_name = try std.fs.path.join(allocator, &[_][]const u8{ runtime_dir, "vm" });
-        const dir = try std.fs.openDirAbsolute(dir_name, .{ .access_sub_paths = false, .iterate = false, .no_follow = true });
+        const dir = try std.fs.cwd().openDir(dir_name, .{ .access_sub_paths = false, .iterate = false, .no_follow = true });
         const file = try std.fs.Dir.openFile(dir, file_name, .{});
         defer file.close();
         const file_contents = try file.readToEndAlloc(allocator, 16 * 1024 * 1024);

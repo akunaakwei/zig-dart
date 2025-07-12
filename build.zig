@@ -1161,15 +1161,34 @@ fn gen_vm_platform(b: *std.Build, options: struct {
     if (options.libraries) |libraries| {
         cmd.addArg(libraries);
     } else {
-    cmd.addArg("--single-root-scheme=org-dartlang-sdk");
-    cmd.addPrefixedDirectoryArg("--single-root-base=", options.pkg.path(b, ".."));
-    cmd.addArg("org-dartlang-sdk:///sdk/lib/libraries.json");
+        cmd.addArg("--single-root-scheme=org-dartlang-sdk");
+        cmd.addPrefixedDirectoryArg("--single-root-base=", options.pkg.path(b, ".."));
+        cmd.addArg("org-dartlang-sdk:///sdk/lib/libraries.json");
     }
     _ = cmd.addOutputFileArg("vm_outline_strong.dill");
     const vm_platform = cmd.addOutputFileArg("vm_platform_strong.dill");
     const vm_outline = cmd.addOutputFileArg("vm_outline_strong.dill");
 
     return .{ vm_platform, vm_outline };
+}
+
+pub fn genVmPlatform(b: *std.Build, options: struct {
+    dart_exe: ?LazyPath = null,
+    pkg: ?LazyPath = null,
+    package_config: ?LazyPath = null,
+    is_product: bool,
+    exclude_source: bool,
+    libraries: ?[]const u8,
+}) std.meta.Tuple(&.{ LazyPath, LazyPath }) {
+    const this_dep = b.dependencyFromBuildZig(@This(), .{});
+    return gen_vm_platform(b, .{
+        .dart_exe = options.dart_exe orelse this_dep.namedLazyPath("prebuilt_dart"),
+        .pkg = options.pkg orelse this_dep.namedLazyPath("pkg"),
+        .package_config = options.package_config orelse this_dep.namedLazyPath("package_config.json"),
+        .is_product = options.is_product,
+        .exclude_source = options.exclude_source,
+        .libraries = options.libraries,
+    });
 }
 
 pub fn gen_kernel_service(b: *std.Build, options: struct {
