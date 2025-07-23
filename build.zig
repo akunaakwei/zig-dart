@@ -6,7 +6,7 @@ const LazyPath = std.Build.LazyPath;
 pub fn build(b: *std.Build) void {
     @setEvalBranchQuota(10_000);
     const target = b.standardTargetOptions(.{});
-    const target_triplet = target.result.zigTriple(b.allocator) catch @panic("OOM");
+    const target_triplet = target.result.linuxTriple(b.allocator) catch @panic("OOM");
     const native_target = b.resolveTargetQuery(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -228,10 +228,12 @@ pub fn build(b: *std.Build) void {
         make_version_cmd.addArg(src);
     }
 
-    const native_libdouble_conversion = b.addStaticLibrary(.{
+    const native_libdouble_conversion = b.addLibrary(.{
         .name = "libdouble_conversion",
-        .target = native_target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = native_target,
+            .optimize = optimize,
+        }),
     });
     native_libdouble_conversion.linkLibCpp();
     native_libdouble_conversion.addIncludePath(third_party.path(b, "double-conversion/src"));
@@ -251,10 +253,12 @@ pub fn build(b: *std.Build) void {
     });
     native_libdouble_conversion.installHeadersDirectory(third_party.path(b, "double-conversion/src"), "double-conversion", .{});
 
-    const libdouble_conversion = b.addStaticLibrary(.{
+    const libdouble_conversion = b.addLibrary(.{
         .name = "libdouble_conversion",
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     libdouble_conversion.linkLibCpp();
     libdouble_conversion.addIncludePath(third_party.path(b, "double-conversion/src"));
@@ -301,10 +305,12 @@ pub fn build(b: *std.Build) void {
         .runtime = runtime,
     });
 
-    const libdart_platform_no_tsan_precompiler = b.addStaticLibrary(.{
+    const libdart_platform_no_tsan_precompiler = b.addLibrary(.{
         .name = "dart_platform_no_tsan_precompiler",
-        .target = native_target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = native_target,
+            .optimize = optimize,
+        }),
     });
     libdart_platform_no_tsan_precompiler.root_module.sanitize_thread = false;
     libdart_platform_no_tsan_precompiler.linkLibCpp();
@@ -333,10 +339,12 @@ pub fn build(b: *std.Build) void {
         .version_cc = version_cc,
     });
 
-    const libdart_builtin = b.addStaticLibrary(.{
+    const libdart_builtin = b.addLibrary(.{
         .name = "libdart_builtin",
-        .target = native_target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = native_target,
+            .optimize = optimize,
+        }),
     });
     b.installArtifact(libdart_builtin);
     libdart_builtin.linkLibCpp();
@@ -349,10 +357,12 @@ pub fn build(b: *std.Build) void {
         });
     }
 
-    const gen_snapshot_dart_io = b.addStaticLibrary(.{
+    const gen_snapshot_dart_io = b.addLibrary(.{
         .name = "gen_snapshot_dart_io",
-        .target = native_target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = native_target,
+            .optimize = optimize,
+        }),
     });
     gen_snapshot_dart_io.linkLibCpp();
     gen_snapshot_dart_io.linkLibrary(native_z);
@@ -383,8 +393,10 @@ pub fn build(b: *std.Build) void {
 
     const gen_snapshot = b.addExecutable(.{
         .name = "gen_snapshot",
-        .target = native_target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = native_target,
+            .optimize = optimize,
+        }),
     });
     gen_snapshot.root_module.sanitize_thread = false;
     gen_snapshot.linkLibCpp();
@@ -484,448 +496,478 @@ pub fn build(b: *std.Build) void {
     const package_config = package_config_step.getPath();
     b.addNamedLazyPath("package_config.json", package_config);
 
-    if (maybe_prebuilt_dart_dep) |prebuilt_dart_dep| {
-        const prebuilt_dart_exe = if (native_target.result.os.tag != .windows) prebuilt_dart_dep.path("bin/dart") else prebuilt_dart_dep.path("bin/dart.exe");
-        b.addNamedLazyPath("prebuilt_dart", prebuilt_dart_exe);
+    const prebuilt_dart_exe: ?LazyPath = prebuilt_dart: {
+        if (maybe_prebuilt_dart_dep) |prebuilt_dart_dep| {
+            const ext = std.Target.exeFileExt(&native_target.result);
+            break :prebuilt_dart prebuilt_dart_dep.path(b.fmt("bin/dart{s}", .{ext}));
+        } else {
+            break :prebuilt_dart null;
+        }
+    };
 
-        const vm_platform_dill = vm_platform_dill_option orelse platform_dill: {
-            const output, _ = gen_vm_platform(b, .{
-                .dart_exe = prebuilt_dart_exe,
-                .package_config = package_config,
-                .pkg = pkg,
-                .is_product = false,
-                .exclude_source = false,
-            });
-            break :platform_dill output;
-        };
-
-        const kernel_service_dill = gen_kernel_service(b, .{
+    const vm_platform_dill = vm_platform_dill_option orelse platform_dill: {
+        const output, _ = gen_vm_platform(b, .{
             .dart_exe = prebuilt_dart_exe,
             .package_config = package_config,
             .pkg = pkg,
-            .vm_platform_strong = vm_platform_dill,
+            .is_product = false,
+            .exclude_source = false,
         });
+        break :platform_dill output;
+    };
 
-        const vm_snapshot_data, const vm_snapshot_instructions, const isolate_snapshot_data, const isolate_snapshot_instructions = gen_snapshot_action(b, .{
-            .exe = gen_snapshot,
-            .platform_dill = vm_platform_dill,
-        });
+    const kernel_service_dill = gen_kernel_service(b, .{
+        .dart_exe = prebuilt_dart_exe,
+        .package_config = package_config,
+        .pkg = pkg,
+        .vm_platform_strong = vm_platform_dill,
+    });
 
-        const vm_snapshot_data_linkable = bin_to_linkable(b, .{
-            .exe = bin_to_linkable_exe,
-            .target = target_triplet,
-            .input = vm_snapshot_data,
-            .output = "vm_snapshot_data.S",
-            .symbol = "kDartVmSnapshotData",
-            .executable = false,
-        });
-        b.addNamedLazyPath("vm_snapshot_data_linkable", vm_snapshot_data_linkable);
-        const vm_snapshot_instructions_linkable = bin_to_linkable(b, .{
-            .exe = bin_to_linkable_exe,
-            .target = target_triplet,
-            .input = vm_snapshot_instructions,
-            .output = "vm_snapshot_instructions.S",
-            .symbol = "kDartVmSnapshotInstructions",
-            .executable = true,
-        });
-        b.addNamedLazyPath("vm_snapshot_instructions_linkable", vm_snapshot_instructions_linkable);
+    const vm_snapshot_data, const vm_snapshot_instructions, const isolate_snapshot_data, const isolate_snapshot_instructions = gen_snapshot_action(b, .{
+        .exe = gen_snapshot,
+        .platform_dill = vm_platform_dill,
+    });
 
-        const isolate_snapshot_data_linkable = bin_to_linkable(b, .{
-            .exe = bin_to_linkable_exe,
-            .target = target_triplet,
-            .input = isolate_snapshot_data,
-            .output = "isolate_snapshot_data.S",
-            .symbol = "kDartCoreIsolateSnapshotData",
-            .executable = false,
-        });
-        b.addNamedLazyPath("isolate_snapshot_data_linkable", isolate_snapshot_data_linkable);
-        const isolate_snapshot_instructions_linkable = bin_to_linkable(b, .{
-            .exe = bin_to_linkable_exe,
-            .target = target_triplet,
-            .input = isolate_snapshot_instructions,
-            .output = "isolate_snapshot_instructions.S",
-            .symbol = "kDartCoreIsolateSnapshotInstructions",
-            .executable = true,
-        });
-        b.addNamedLazyPath("isolate_snapshot_instructions_linkable", isolate_snapshot_instructions_linkable);
+    const vm_snapshot_data_linkable = bin_to_linkable(b, .{
+        .exe = bin_to_linkable_exe,
+        .target = target_triplet,
+        .input = vm_snapshot_data,
+        .output = "vm_snapshot_data.S",
+        .symbol = "kDartVmSnapshotData",
+        .executable = false,
+    });
+    b.addNamedLazyPath("vm_snapshot_data_linkable", vm_snapshot_data_linkable);
+    const vm_snapshot_instructions_linkable = bin_to_linkable(b, .{
+        .exe = bin_to_linkable_exe,
+        .target = target_triplet,
+        .input = vm_snapshot_instructions,
+        .output = "vm_snapshot_instructions.S",
+        .symbol = "kDartVmSnapshotInstructions",
+        .executable = true,
+    });
+    b.addNamedLazyPath("vm_snapshot_instructions_linkable", vm_snapshot_instructions_linkable);
 
-        const platform_strong_dill_linkable = bin_to_linkable(b, .{
-            .exe = bin_to_linkable_exe,
-            .target = target_triplet,
-            .input = vm_platform_dill,
-            .output = "vm_platform_strong.S",
-            .symbol = "kPlatformStrongDill",
-            .size_symbol = "kPlatformStrongDillSize",
-            .executable = false,
-        });
-        b.addNamedLazyPath("platform_strong_dill_linkable", platform_strong_dill_linkable);
-        const kernel_service_dill_linkable = bin_to_linkable(b, .{
-            .exe = bin_to_linkable_exe,
-            .target = target_triplet,
-            .input = kernel_service_dill,
-            .output = "kernel_service.S",
-            .symbol = "kKernelServiceDill",
-            .size_symbol = "kKernelServiceDillSize",
-            .executable = false,
-        });
-        b.addNamedLazyPath("kernel_service_dill_linkable", kernel_service_dill_linkable);
+    const isolate_snapshot_data_linkable = bin_to_linkable(b, .{
+        .exe = bin_to_linkable_exe,
+        .target = target_triplet,
+        .input = isolate_snapshot_data,
+        .output = "isolate_snapshot_data.S",
+        .symbol = "kDartCoreIsolateSnapshotData",
+        .executable = false,
+    });
+    b.addNamedLazyPath("isolate_snapshot_data_linkable", isolate_snapshot_data_linkable);
+    const isolate_snapshot_instructions_linkable = bin_to_linkable(b, .{
+        .exe = bin_to_linkable_exe,
+        .target = target_triplet,
+        .input = isolate_snapshot_instructions,
+        .output = "isolate_snapshot_instructions.S",
+        .symbol = "kDartCoreIsolateSnapshotInstructions",
+        .executable = true,
+    });
+    b.addNamedLazyPath("isolate_snapshot_instructions_linkable", isolate_snapshot_instructions_linkable);
 
-        const libdart_jit = library_libdart(b, .{
-            .name = "libdart_jit",
-            .target = target,
-            .optimize = optimize,
-            .flags = &_jit_config,
-            .runtime = runtime,
-            .version_cc = version_cc,
-        });
-        b.installArtifact(libdart_jit);
-        const libdart_platform_jit = library_libdart_platform(b, .{
-            .name = "libdart_platform_jit",
-            .target = target,
-            .optimize = optimize,
-            .flags = &_jit_config,
-            .runtime = runtime,
-            .version_cc = version_cc,
-        });
-        b.installArtifact(libdart_platform_jit);
+    const platform_strong_dill_linkable = bin_to_linkable(b, .{
+        .exe = bin_to_linkable_exe,
+        .target = target_triplet,
+        .input = vm_platform_dill,
+        .output = "vm_platform_strong.S",
+        .symbol = "kPlatformStrongDill",
+        .size_symbol = "kPlatformStrongDillSize",
+        .executable = false,
+    });
+    b.addNamedLazyPath("platform_strong_dill_linkable", platform_strong_dill_linkable);
+    const kernel_service_dill_linkable = bin_to_linkable(b, .{
+        .exe = bin_to_linkable_exe,
+        .target = target_triplet,
+        .input = kernel_service_dill,
+        .output = "kernel_service.S",
+        .symbol = "kKernelServiceDill",
+        .size_symbol = "kKernelServiceDillSize",
+        .executable = false,
+    });
+    b.addNamedLazyPath("kernel_service_dill_linkable", kernel_service_dill_linkable);
 
-        const standalone_dart_io = b.addStaticLibrary(.{
-            .name = "standalone_dart_io",
+    const libdart_jit = library_libdart(b, .{
+        .name = "libdart_jit",
+        .target = target,
+        .optimize = optimize,
+        .flags = &_jit_config,
+        .runtime = runtime,
+        .version_cc = version_cc,
+    });
+    b.installArtifact(libdart_jit);
+    const libdart_platform_jit = library_libdart_platform(b, .{
+        .name = "libdart_platform_jit",
+        .target = target,
+        .optimize = optimize,
+        .flags = &_jit_config,
+        .runtime = runtime,
+        .version_cc = version_cc,
+    });
+    b.installArtifact(libdart_platform_jit);
+
+    const standalone_dart_io = b.addLibrary(.{
+        .name = "standalone_dart_io",
+        .root_module = b.createModule(.{
             .target = native_target,
             .optimize = optimize,
-        });
-        b.installArtifact(standalone_dart_io);
-        standalone_dart_io.linkLibCpp();
-        standalone_dart_io.linkLibrary(native_z);
-        standalone_dart_io.linkLibrary(native_ssl);
-        standalone_dart_io.linkLibrary(libdart_builtin);
-        standalone_dart_io.addIncludePath(runtime);
+        }),
+    });
+    b.installArtifact(standalone_dart_io);
+    standalone_dart_io.linkLibCpp();
+    standalone_dart_io.linkLibrary(native_z);
+    standalone_dart_io.linkLibrary(native_ssl);
+    standalone_dart_io.linkLibrary(libdart_builtin);
+    standalone_dart_io.addIncludePath(runtime);
 
-        const standalone_dart_io_flags = dart_config ++ dart_maybe_product_config ++ dart_arch_config ++ dart_os_config ++ .{"-DDART_IO_SECURE_SOCKET_DISABLED"};
-        inline for (io_impl_sources) |src| {
-            comptime if (!std.mem.endsWith(u8, src, ".cc")) continue;
-            standalone_dart_io.addCSourceFile(.{
-                .file = runtime.path(b, b.pathJoin(&.{ "bin", src })),
-                .flags = &standalone_dart_io_flags,
-            });
-        }
-        standalone_dart_io.addCSourceFiles(.{
-            .root = runtime.path(b, "bin"),
-            .files = &.{
-                "builtin_natives.cc",
-                "io_natives.cc",
-            },
+    const standalone_dart_io_flags = dart_config ++ dart_maybe_product_config ++ dart_arch_config ++ dart_os_config ++ .{"-DDART_IO_SECURE_SOCKET_DISABLED"};
+    inline for (io_impl_sources) |src| {
+        comptime if (!std.mem.endsWith(u8, src, ".cc")) continue;
+        standalone_dart_io.addCSourceFile(.{
+            .file = runtime.path(b, b.pathJoin(&.{ "bin", src })),
             .flags = &standalone_dart_io_flags,
         });
-        switch (standalone_dart_io.root_module.resolved_target.?.result.os.tag) {
-            .macos, .ios => {
-                standalone_dart_io.addCSourceFile(.{
-                    .file = runtime.path(b, "bin/platform_macos_cocoa.mm"),
-                    .flags = &standalone_dart_io_flags,
-                });
-            },
-            else => {},
-        }
-
-        const libdart_vm_jit = library_libdart_vm(b, .{
-            .name = "libdart_vm_jit",
-            .target = native_target,
-            .optimize = optimize,
-            .flags = &_jit_config,
-            .runtime = runtime,
-            .icui18n = native_icui18n,
-            .icuuc = native_icuuc,
-            .libdouble_conversion = native_libdouble_conversion,
-        });
-        b.installArtifact(libdart_vm_jit);
-        const libdart_platform_no_tsan_jit = b.addStaticLibrary(.{
-            .name = "libdart_platform_no_tsan_jit",
-            .target = native_target,
-            .optimize = optimize,
-        });
-        b.installArtifact(libdart_platform_no_tsan_jit);
-        libdart_platform_no_tsan_jit.root_module.sanitize_thread = false;
-        libdart_platform_no_tsan_jit.linkLibCpp();
-        libdart_platform_no_tsan_jit.addIncludePath(runtime);
-        libdart_platform_no_tsan_jit.addCSourceFiles(.{
-            .root = runtime.path(b, "platform"),
-            .files = &.{"no_tsan.cc"},
-            .flags = &_jit_config,
-        });
-
-        const libdart_lib_jit = library_libdart_lib(b, .{
-            .name = "libdart_lib_jit",
-            .target = native_target,
-            .optimize = optimize,
-            .flags = &_jit_config,
-            .runtime = runtime,
-        });
-        b.installArtifact(libdart_lib_jit);
-
-        const libdart_compiler_jit = library_libdart_compiler(b, .{
-            .name = "libdart_compiler_jit",
-            .target = target,
-            .optimize = optimize,
-            .flags = &_jit_config,
-            .runtime = runtime,
-        });
-        b.installArtifact(libdart_compiler_jit);
-
-        const crashpad = b.addStaticLibrary(.{
-            .name = "crashpad",
-            .target = target,
-            .optimize = optimize,
-        });
-        b.installArtifact(crashpad);
-        crashpad.linkLibCpp();
-        crashpad.addIncludePath(runtime);
-        crashpad.addCSourceFiles(.{
-            .root = runtime.path(b, "bin"),
-            .files = &.{"crashpad.cc"},
-            .flags = &(dart_arch_config ++ dart_config ++ dart_os_config),
-        });
-
-        const native_assets_api = b.addStaticLibrary(.{
-            .name = "native_assets_api",
-            .target = target,
-            .optimize = optimize,
-        });
-        b.installArtifact(native_assets_api);
-        native_assets_api.linkLibCpp();
-        native_assets_api.addIncludePath(runtime);
-        inline for (native_assets_impl_sources) |src| {
-            native_assets_api.addCSourceFile(.{
-                .file = runtime.path(b, b.pathJoin(&.{ "bin", src })),
-                .flags = &(dart_config ++ dart_maybe_product_config ++ dart_os_config ++ dart_arch_config),
-            });
-        }
-
-        const observatory = b.addStaticLibrary(.{
-            .name = "observatory",
-            .target = target,
-            .optimize = optimize,
-        });
-        b.installArtifact(observatory);
-        observatory.linkLibCpp();
-        observatory.addIncludePath(runtime);
-        observatory.addCSourceFiles(.{
-            .root = runtime.path(b, "bin"),
-            .files = &.{"observatory_assets_empty.cc"},
-            .flags = &(dart_arch_config ++ dart_config ++ dart_os_config),
-        });
-
-        const dart = b.addExecutable(.{
-            .name = "dart",
-            .target = target,
-            .optimize = optimize,
-        });
-        dart.root_module.sanitize_thread = false;
-        dart.linkLibCpp();
-        dart.linkLibrary(z);
-        dart.linkLibrary(ssl);
-        dart.linkLibrary(icuuc);
-        dart.linkLibrary(icui18n);
-        dart.linkLibrary(libdart_jit);
-        dart.linkLibrary(libdart_platform_jit);
-        dart.linkLibrary(libdart_platform_no_tsan_jit);
-        dart.linkLibrary(libdart_builtin);
-        dart.linkLibrary(standalone_dart_io);
-        dart.linkLibrary(libdart_vm_jit);
-        dart.linkLibrary(libdart_compiler_jit);
-        dart.linkLibrary(libdart_lib_jit);
-        dart.linkLibrary(crashpad);
-        dart.linkLibrary(native_assets_api);
-        dart.linkLibrary(observatory);
-        dart.addAssemblyFile(vm_snapshot_data_linkable);
-        dart.addAssemblyFile(vm_snapshot_instructions_linkable);
-        dart.addAssemblyFile(isolate_snapshot_data_linkable);
-        dart.addAssemblyFile(isolate_snapshot_instructions_linkable);
-        dart.addAssemblyFile(kernel_service_dill_linkable);
-        dart.addAssemblyFile(platform_strong_dill_linkable);
-        switch (dart.root_module.resolved_target.?.result.os.tag) {
-            .windows => {
-                dart.linkSystemLibrary("iphlpapi");
-                dart.linkSystemLibrary("ws2_32");
-                dart.linkSystemLibrary("Rpcrt4");
-                dart.linkSystemLibrary("shlwapi");
-                dart.linkSystemLibrary("winmm");
-                dart.linkSystemLibrary("psapi");
-                dart.linkSystemLibrary("advapi32");
-                dart.linkSystemLibrary("shell32");
-                dart.linkSystemLibrary("ntdll");
-                dart.linkSystemLibrary("dbghelp");
-                dart.linkSystemLibrary("ole32");
-                dart.linkSystemLibrary("oleaut32");
-                dart.linkSystemLibrary("crypt32");
-                dart.linkSystemLibrary("bcrypt");
-                dart.linkSystemLibrary("api-ms-win-core-path-l1-1-0");
-
-                const maybe_comsupp_dep = b.lazyDependency("comsupp", .{
-                    .target = dart.root_module.resolved_target.?,
-                    .optimize = dart.root_module.optimize.?,
-                });
-                if (maybe_comsupp_dep) |comsupp_dep| {
-                    dart.linkLibrary(comsupp_dep.artifact("comsupp"));
-                }
-            },
-            .macos, .ios => {
-                dart.linkFramework("CoreFoundation");
-                dart.linkFramework("CoreServices");
-                dart.linkFramework("Foundation");
-                dart.linkFramework("Security");
-            },
-            else => {},
-        }
-        dart.addIncludePath(runtime);
-        const dart_flags = dart_arch_config ++ dart_config ++ dart_os_config ++ .{"-DDART_IO_SECURE_SOCKET_DISABLED"};
-        // sources
-        dart.addCSourceFiles(.{
-            .root = runtime.path(b, "bin"),
-            .files = &.{
-                "dart_embedder_api_impl.cc",
-                "error_exit.cc",
-                "icu.cc",
-                "main_options.cc",
-                "options.cc",
-                "snapshot_utils.cc",
-                "vmservice_impl.cc",
-            },
-            .flags = &dart_flags,
-        });
-        // extra sources
-        dart.addCSourceFiles(.{
-            .root = runtime.path(b, "bin"),
-            .files = &.{
-                "builtin.cc",
-                "dartdev_isolate.cc",
-                "dfe.cc",
-                "gzip.cc",
-                "loader.cc",
-                "main.cc",
-                "main_impl.cc",
-            },
-            .flags = &dart_flags,
-        });
-        b.installArtifact(dart);
-
-        const package_config_test_step = PackageConfigStep.create(b);
-        var package_it = package_config_step.map.iterator();
-        while (package_it.next()) |pkg_entry| {
-            package_config_test_step.map.put(b.allocator, pkg_entry.key_ptr.*, pkg_entry.value_ptr.*) catch @panic("OOM");
-        }
-        package_config_test_step.add("test_runner", pkg.path(b, "test_runner"), "lib");
-        package_config_test_step.add("smith", pkg.path(b, "smith"), "lib");
-        package_config_test_step.add("status_file", pkg.path(b, "status_file"), "lib");
-        package_config_test_step.add("shell_arg_splitter", pkg.path(b, "shell_arg_splitter"), "lib");
-        package_config_test_step.add("dart2js_tools", pkg.path(b, "dart2js_tools"), "lib");
-        package_config_test_step.add("expect", pkg.path(b, "expect"), "lib");
-        package_config_test_step.add("async_helper", pkg.path(b, "async_helper"), "lib");
-        package_config_test_step.add("native_stack_traces", pkg.path(b, "native_stack_traces"), "lib");
-        package_config_test_step.add("dart_internal", pkg.path(b, "dart_internal"), "lib");
-
-        package_config_test_step.add("pool", tools_dep.path("pkgs/pool"), "lib");
-        package_config_test_step.add("stack_trace", tools_dep.path("pkgs/stack_trace"), "lib");
-        package_config_test_step.add("source_maps", tools_dep.path("pkgs/source_maps"), "lib");
-        package_config_test_step.add("boolean_selector", tools_dep.path("pkgs/boolean_selector"), "lib");
-
-        package_config_test_step.add("async", core_dep.path("pkgs/async"), "lib");
-
-        const webdriver_dep = b.dependency("dart_webdriver", .{});
-        package_config_test_step.add("webdriver", webdriver_dep.path("."), "lib");
-
-        const test_dep = b.dependency("dart_test", .{});
-        package_config_test_step.add("matcher", test_dep.path("pkgs/matcher"), "lib");
-        package_config_test_step.add("test_api", test_dep.path("pkgs/test_api"), "lib");
-
-        const sync_http_dep = b.dependency("dart_sync_http", .{});
-        package_config_test_step.add("sync_http", sync_http_dep.path("."), "lib");
-
-        const native_dep = b.dependency("dart_native", .{});
-        package_config_test_step.add("ffi", native_dep.path("pkgs/ffi"), "lib");
-
-        const package_config_test = package_config_test_step.getPath();
-
-        const ffi_test_dynamic_library = b.addSharedLibrary(.{
-            .name = "ffi_test_dynamic_library",
-            .target = target,
-            .optimize = .Debug,
-        });
-        ffi_test_dynamic_library.linkLibCpp();
-        ffi_test_dynamic_library.addIncludePath(runtime);
-        ffi_test_dynamic_library.addCSourceFile(.{
-            .file = runtime.path(b, "bin/ffi_test/ffi_test_dynamic_library.cc"),
-            .flags = &.{""},
-        });
-        const install_ffi_test_dynamic_library = b.addInstallArtifact(ffi_test_dynamic_library, .{});
-
-        const ffi_test_functions = b.addSharedLibrary(.{
-            .name = "ffi_test_functions",
-            .target = target,
-            .optimize = .Debug,
-        });
-        ffi_test_functions.linkLibCpp();
-        ffi_test_functions.addIncludePath(runtime);
-        ffi_test_functions.addCSourceFiles(.{
-            .root = runtime.path(b, "bin"),
-            .files = &.{
-                "../include/dart_api_dl.c",
-                "ffi_test/ffi_test_fields.c",
-                "ffi_test/ffi_test_functions.cc",
-                "ffi_test/ffi_test_functions_generated.cc",
-                "ffi_test/ffi_test_functions_generated_2.cc",
-                "ffi_test/ffi_test_functions_vmspecific.cc",
-            },
-            .flags = &.{""},
-        });
-        if (ffi_test_functions.root_module.resolved_target.?.result.os.tag == .windows) {
-            ffi_test_functions.addCSourceFile(.{
-                .file = runtime.path(b, "bin/dart_api_win.c"),
-                .flags = &.{""},
-            });
-        }
-        ffi_test_functions.addAssemblyFile(
-            switch (ffi_test_functions.root_module.resolved_target.?.result.cpu.arch) {
-                .x86_64 => runtime.path(b, "bin/ffi_test/clobber_x64.S"),
-                .x86 => runtime.path(b, "bin/ffi_test/clobber_x86.S"),
-                .arm => runtime.path(b, "bin/ffi_test/clobber_arm.S"),
-                .aarch64 => runtime.path(b, "bin/ffi_test/clobber_arm64.S"),
-                .riscv32 => runtime.path(b, "bin/ffi_test/clobber_riscv32.S"),
-                .riscv64 => runtime.path(b, "bin/ffi_test/clobber_riscv64.S"),
-                else => @panic("Unsupported architecture"),
-            },
-        );
-        const install_ffi_test_functions = b.addInstallArtifact(ffi_test_functions, .{});
-
-        // use the prebuilt dart instead of the compile one
-        // in order to rule out test runner errors
-        const test_cmd = std.Build.Step.Run.create(b, "run dart test suite");
-        test_cmd.addFileArg(prebuilt_dart_exe);
-        test_cmd.setCwd(upstream_dep.path("."));
-        test_cmd.addPrefixedFileArg("--packages=", package_config_test);
-        test_cmd.addFileArg(pkg.path(b, "test_runner/bin/test_runner.dart"));
-        test_cmd.addPrefixedFileArg("--packages=", package_config_test);
-        test_cmd.addPrefixedFileArg("--dart=", dart.getEmittedBin());
-        if (optimize != .ReleaseFast) {
-            // it is very slow
-            test_cmd.addArg("--timeout=180");
-        } else {
-            test_cmd.addArg("--timeout=30");
-        }
-        test_cmd.addArg("corelib");
-        test_cmd.addArg("ffi");
-        test_cmd.addArg("language");
-        test_cmd.addArg("lib");
-        test_cmd.addArg("samples");
-        test_cmd.addArg("standalone");
-
-        test_cmd.step.dependOn(&install_ffi_test_dynamic_library.step);
-        test_cmd.step.dependOn(&install_ffi_test_functions.step);
-        test_cmd.addPathDir(b.exe_dir);
-
-        const test_step = b.step("test", "Run the dart test suite");
-        test_step.dependOn(b.getInstallStep());
-        test_step.dependOn(&test_cmd.step);
     }
+    standalone_dart_io.addCSourceFiles(.{
+        .root = runtime.path(b, "bin"),
+        .files = &.{
+            "builtin_natives.cc",
+            "io_natives.cc",
+        },
+        .flags = &standalone_dart_io_flags,
+    });
+    switch (standalone_dart_io.root_module.resolved_target.?.result.os.tag) {
+        .macos, .ios => {
+            standalone_dart_io.addCSourceFile(.{
+                .file = runtime.path(b, "bin/platform_macos_cocoa.mm"),
+                .flags = &standalone_dart_io_flags,
+            });
+        },
+        else => {},
+    }
+
+    const libdart_vm_jit = library_libdart_vm(b, .{
+        .name = "libdart_vm_jit",
+        .target = native_target,
+        .optimize = optimize,
+        .flags = &_jit_config,
+        .runtime = runtime,
+        .icui18n = native_icui18n,
+        .icuuc = native_icuuc,
+        .libdouble_conversion = native_libdouble_conversion,
+    });
+    b.installArtifact(libdart_vm_jit);
+    const libdart_platform_no_tsan_jit = b.addLibrary(.{
+        .name = "libdart_platform_no_tsan_jit",
+        .root_module = b.createModule(.{
+            .target = native_target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(libdart_platform_no_tsan_jit);
+    libdart_platform_no_tsan_jit.root_module.sanitize_thread = false;
+    libdart_platform_no_tsan_jit.linkLibCpp();
+    libdart_platform_no_tsan_jit.addIncludePath(runtime);
+    libdart_platform_no_tsan_jit.addCSourceFiles(.{
+        .root = runtime.path(b, "platform"),
+        .files = &.{"no_tsan.cc"},
+        .flags = &_jit_config,
+    });
+
+    const libdart_lib_jit = library_libdart_lib(b, .{
+        .name = "libdart_lib_jit",
+        .target = native_target,
+        .optimize = optimize,
+        .flags = &_jit_config,
+        .runtime = runtime,
+    });
+    b.installArtifact(libdart_lib_jit);
+
+    const libdart_compiler_jit = library_libdart_compiler(b, .{
+        .name = "libdart_compiler_jit",
+        .target = target,
+        .optimize = optimize,
+        .flags = &_jit_config,
+        .runtime = runtime,
+    });
+    b.installArtifact(libdart_compiler_jit);
+
+    const crashpad = b.addLibrary(.{
+        .name = "crashpad",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(crashpad);
+    crashpad.linkLibCpp();
+    crashpad.addIncludePath(runtime);
+    crashpad.addCSourceFiles(.{
+        .root = runtime.path(b, "bin"),
+        .files = &.{"crashpad.cc"},
+        .flags = &(dart_arch_config ++ dart_config ++ dart_os_config),
+    });
+
+    const native_assets_api = b.addLibrary(.{
+        .name = "native_assets_api",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(native_assets_api);
+    native_assets_api.linkLibCpp();
+    native_assets_api.addIncludePath(runtime);
+    inline for (native_assets_impl_sources) |src| {
+        native_assets_api.addCSourceFile(.{
+            .file = runtime.path(b, b.pathJoin(&.{ "bin", src })),
+            .flags = &(dart_config ++ dart_maybe_product_config ++ dart_os_config ++ dart_arch_config),
+        });
+    }
+
+    const observatory = b.addLibrary(.{
+        .name = "observatory",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(observatory);
+    observatory.linkLibCpp();
+    observatory.addIncludePath(runtime);
+    observatory.addCSourceFiles(.{
+        .root = runtime.path(b, "bin"),
+        .files = &.{"observatory_assets_empty.cc"},
+        .flags = &(dart_arch_config ++ dart_config ++ dart_os_config),
+    });
+
+    const dart = b.addExecutable(.{
+        .name = "dart",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    dart.root_module.sanitize_thread = false;
+    dart.linkLibCpp();
+    dart.linkLibrary(z);
+    dart.linkLibrary(ssl);
+    dart.linkLibrary(icuuc);
+    dart.linkLibrary(icui18n);
+    dart.linkLibrary(libdart_jit);
+    dart.linkLibrary(libdart_platform_jit);
+    dart.linkLibrary(libdart_platform_no_tsan_jit);
+    dart.linkLibrary(libdart_builtin);
+    dart.linkLibrary(standalone_dart_io);
+    dart.linkLibrary(libdart_vm_jit);
+    dart.linkLibrary(libdart_compiler_jit);
+    dart.linkLibrary(libdart_lib_jit);
+    dart.linkLibrary(crashpad);
+    dart.linkLibrary(native_assets_api);
+    dart.linkLibrary(observatory);
+    dart.addAssemblyFile(vm_snapshot_data_linkable);
+    dart.addAssemblyFile(vm_snapshot_instructions_linkable);
+    dart.addAssemblyFile(isolate_snapshot_data_linkable);
+    dart.addAssemblyFile(isolate_snapshot_instructions_linkable);
+    dart.addAssemblyFile(kernel_service_dill_linkable);
+    dart.addAssemblyFile(platform_strong_dill_linkable);
+    switch (dart.root_module.resolved_target.?.result.os.tag) {
+        .windows => {
+            dart.linkSystemLibrary("iphlpapi");
+            dart.linkSystemLibrary("ws2_32");
+            dart.linkSystemLibrary("Rpcrt4");
+            dart.linkSystemLibrary("shlwapi");
+            dart.linkSystemLibrary("winmm");
+            dart.linkSystemLibrary("psapi");
+            dart.linkSystemLibrary("advapi32");
+            dart.linkSystemLibrary("shell32");
+            dart.linkSystemLibrary("ntdll");
+            dart.linkSystemLibrary("dbghelp");
+            dart.linkSystemLibrary("ole32");
+            dart.linkSystemLibrary("oleaut32");
+            dart.linkSystemLibrary("crypt32");
+            dart.linkSystemLibrary("bcrypt");
+            dart.linkSystemLibrary("api-ms-win-core-path-l1-1-0");
+
+            const maybe_comsupp_dep = b.lazyDependency("comsupp", .{
+                .target = dart.root_module.resolved_target.?,
+                .optimize = dart.root_module.optimize.?,
+            });
+            if (maybe_comsupp_dep) |comsupp_dep| {
+                dart.linkLibrary(comsupp_dep.artifact("comsupp"));
+            }
+        },
+        .macos, .ios => {
+            dart.linkFramework("CoreFoundation");
+            dart.linkFramework("CoreServices");
+            dart.linkFramework("Foundation");
+            dart.linkFramework("Security");
+        },
+        else => {},
+    }
+    dart.addIncludePath(runtime);
+    const dart_flags = dart_arch_config ++ dart_config ++ dart_os_config ++ .{"-DDART_IO_SECURE_SOCKET_DISABLED"};
+    // sources
+    dart.addCSourceFiles(.{
+        .root = runtime.path(b, "bin"),
+        .files = &.{
+            "dart_embedder_api_impl.cc",
+            "error_exit.cc",
+            "icu.cc",
+            "main_options.cc",
+            "options.cc",
+            "snapshot_utils.cc",
+            "vmservice_impl.cc",
+        },
+        .flags = &dart_flags,
+    });
+    // extra sources
+    dart.addCSourceFiles(.{
+        .root = runtime.path(b, "bin"),
+        .files = &.{
+            "builtin.cc",
+            "dartdev_isolate.cc",
+            "dfe.cc",
+            "gzip.cc",
+            "loader.cc",
+            "main.cc",
+            "main_impl.cc",
+        },
+        .flags = &dart_flags,
+    });
+    b.installArtifact(dart);
+
+    const package_config_test_step = PackageConfigStep.create(b);
+    var package_it = package_config_step.map.iterator();
+    while (package_it.next()) |pkg_entry| {
+        package_config_test_step.map.put(b.allocator, pkg_entry.key_ptr.*, pkg_entry.value_ptr.*) catch @panic("OOM");
+    }
+    package_config_test_step.add("test_runner", pkg.path(b, "test_runner"), "lib");
+    package_config_test_step.add("smith", pkg.path(b, "smith"), "lib");
+    package_config_test_step.add("status_file", pkg.path(b, "status_file"), "lib");
+    package_config_test_step.add("shell_arg_splitter", pkg.path(b, "shell_arg_splitter"), "lib");
+    package_config_test_step.add("dart2js_tools", pkg.path(b, "dart2js_tools"), "lib");
+    package_config_test_step.add("expect", pkg.path(b, "expect"), "lib");
+    package_config_test_step.add("async_helper", pkg.path(b, "async_helper"), "lib");
+    package_config_test_step.add("native_stack_traces", pkg.path(b, "native_stack_traces"), "lib");
+    package_config_test_step.add("dart_internal", pkg.path(b, "dart_internal"), "lib");
+
+    package_config_test_step.add("pool", tools_dep.path("pkgs/pool"), "lib");
+    package_config_test_step.add("stack_trace", tools_dep.path("pkgs/stack_trace"), "lib");
+    package_config_test_step.add("source_maps", tools_dep.path("pkgs/source_maps"), "lib");
+    package_config_test_step.add("boolean_selector", tools_dep.path("pkgs/boolean_selector"), "lib");
+
+    package_config_test_step.add("async", core_dep.path("pkgs/async"), "lib");
+
+    const webdriver_dep = b.dependency("dart_webdriver", .{});
+    package_config_test_step.add("webdriver", webdriver_dep.path("."), "lib");
+
+    const test_dep = b.dependency("dart_test", .{});
+    package_config_test_step.add("matcher", test_dep.path("pkgs/matcher"), "lib");
+    package_config_test_step.add("test_api", test_dep.path("pkgs/test_api"), "lib");
+
+    const sync_http_dep = b.dependency("dart_sync_http", .{});
+    package_config_test_step.add("sync_http", sync_http_dep.path("."), "lib");
+
+    const native_dep = b.dependency("dart_native", .{});
+    package_config_test_step.add("ffi", native_dep.path("pkgs/ffi"), "lib");
+
+    const package_config_test = package_config_test_step.getPath();
+
+    const ffi_test_dynamic_library = b.addLibrary(.{
+        .name = "ffi_test_dynamic_library",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = .Debug,
+        }),
+        .linkage = .dynamic,
+    });
+    ffi_test_dynamic_library.linkLibCpp();
+    ffi_test_dynamic_library.addIncludePath(runtime);
+    ffi_test_dynamic_library.addCSourceFile(.{
+        .file = runtime.path(b, "bin/ffi_test/ffi_test_dynamic_library.cc"),
+        .flags = &.{""},
+    });
+    const install_ffi_test_dynamic_library = b.addInstallArtifact(ffi_test_dynamic_library, .{});
+
+    const ffi_test_functions = b.addLibrary(.{
+        .name = "ffi_test_functions",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = .Debug,
+        }),
+        .linkage = .dynamic,
+    });
+    ffi_test_functions.linkLibCpp();
+    ffi_test_functions.addIncludePath(runtime);
+    ffi_test_functions.addCSourceFiles(.{
+        .root = runtime.path(b, "bin"),
+        .files = &.{
+            "../include/dart_api_dl.c",
+            "ffi_test/ffi_test_fields.c",
+            "ffi_test/ffi_test_functions.cc",
+            "ffi_test/ffi_test_functions_generated.cc",
+            "ffi_test/ffi_test_functions_generated_2.cc",
+            "ffi_test/ffi_test_functions_vmspecific.cc",
+        },
+        .flags = &.{""},
+    });
+    if (ffi_test_functions.root_module.resolved_target.?.result.os.tag == .windows) {
+        ffi_test_functions.addCSourceFile(.{
+            .file = runtime.path(b, "bin/dart_api_win.c"),
+            .flags = &.{""},
+        });
+    }
+    ffi_test_functions.addAssemblyFile(
+        switch (ffi_test_functions.root_module.resolved_target.?.result.cpu.arch) {
+            .x86_64 => runtime.path(b, "bin/ffi_test/clobber_x64.S"),
+            .x86 => runtime.path(b, "bin/ffi_test/clobber_x86.S"),
+            .arm => runtime.path(b, "bin/ffi_test/clobber_arm.S"),
+            .aarch64 => runtime.path(b, "bin/ffi_test/clobber_arm64.S"),
+            .riscv32 => runtime.path(b, "bin/ffi_test/clobber_riscv32.S"),
+            .riscv64 => runtime.path(b, "bin/ffi_test/clobber_riscv64.S"),
+            else => @panic("Unsupported architecture"),
+        },
+    );
+    const install_ffi_test_functions = b.addInstallArtifact(ffi_test_functions, .{});
+
+    // use the prebuilt dart instead of the compile one
+    // in order to rule out test runner errors
+    const test_cmd = test_cmd: {
+        if (prebuilt_dart_exe) |dart_exe| {
+            const dart_cmd = std.Build.Step.Run.create(b, "run dart test suite");
+            dart_cmd.addFileArg(dart_exe);
+            break :test_cmd dart_cmd;
+        } else {
+            const dart_cmd = b.addSystemCommand(&.{"dart"});
+            break :test_cmd dart_cmd;
+        }
+    };
+    test_cmd.setCwd(upstream_dep.path("."));
+    test_cmd.addPrefixedFileArg("--packages=", package_config_test);
+    test_cmd.addFileArg(pkg.path(b, "test_runner/bin/test_runner.dart"));
+    test_cmd.addPrefixedFileArg("--packages=", package_config_test);
+    test_cmd.addPrefixedFileArg("--dart=", dart.getEmittedBin());
+    if (optimize != .ReleaseFast) {
+        // it is very slow
+        test_cmd.addArg("--timeout=180");
+    } else {
+        test_cmd.addArg("--timeout=30");
+    }
+    test_cmd.addArg("corelib");
+    test_cmd.addArg("ffi");
+    test_cmd.addArg("language");
+    test_cmd.addArg("lib");
+    test_cmd.addArg("samples");
+    test_cmd.addArg("standalone");
+
+    test_cmd.step.dependOn(&install_ffi_test_dynamic_library.step);
+    test_cmd.step.dependOn(&install_ffi_test_functions.step);
+    test_cmd.addPathDir(b.exe_dir);
+
+    const test_step = b.step("test", "Run the dart test suite");
+    test_step.dependOn(b.getInstallStep());
+    test_step.dependOn(&test_cmd.step);
 }
 
 fn bin_to_linkable(b: *std.Build, options: struct {
@@ -980,10 +1022,12 @@ fn library_libdart(b: *std.Build, options: struct {
     runtime: LazyPath,
     version_cc: LazyPath,
 }) *std.Build.Step.Compile {
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = options.name,
-        .target = options.target,
-        .optimize = options.optimize,
+        .root_module = b.createModule(.{
+            .target = options.target,
+            .optimize = options.optimize,
+        }),
     });
     lib.linkLibCpp();
     lib.addIncludePath(options.runtime);
@@ -1011,10 +1055,12 @@ fn library_libdart_platform(b: *std.Build, options: struct {
     runtime: LazyPath,
     version_cc: LazyPath,
 }) *std.Build.Step.Compile {
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = options.name,
-        .target = options.target,
-        .optimize = options.optimize,
+        .root_module = b.createModule(.{
+            .target = options.target,
+            .optimize = options.optimize,
+        }),
     });
     lib.linkLibCpp();
     lib.addIncludePath(options.runtime);
@@ -1037,10 +1083,12 @@ fn library_libdart_vm(b: *std.Build, options: struct {
     icuuc: *std.Build.Step.Compile,
     libdouble_conversion: *std.Build.Step.Compile,
 }) *std.Build.Step.Compile {
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = options.name,
-        .target = options.target,
-        .optimize = options.optimize,
+        .root_module = b.createModule(.{
+            .target = options.target,
+            .optimize = options.optimize,
+        }),
     });
     lib.linkLibCpp();
     lib.linkLibrary(options.icui18n);
@@ -1093,10 +1141,12 @@ fn library_libdart_compiler(b: *std.Build, options: struct {
     flags: []const []const u8,
     runtime: LazyPath,
 }) *std.Build.Step.Compile {
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = options.name,
-        .target = options.target,
-        .optimize = options.optimize,
+        .root_module = b.createModule(.{
+            .target = options.target,
+            .optimize = options.optimize,
+        }),
     });
     lib.linkLibCpp();
     lib.addIncludePath(options.runtime);
@@ -1116,10 +1166,12 @@ fn library_libdart_lib(b: *std.Build, options: struct {
     flags: []const []const u8,
     runtime: LazyPath,
 }) *std.Build.Step.Compile {
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = options.name,
-        .target = options.target,
-        .optimize = options.optimize,
+        .root_module = b.createModule(.{
+            .target = options.target,
+            .optimize = options.optimize,
+        }),
     });
     lib.linkLibCpp();
     lib.addIncludePath(options.runtime);
@@ -1137,15 +1189,24 @@ fn library_libdart_lib(b: *std.Build, options: struct {
 }
 
 fn gen_vm_platform(b: *std.Build, options: struct {
-    dart_exe: LazyPath,
+    dart_exe: ?LazyPath,
     pkg: LazyPath,
     package_config: LazyPath,
     is_product: bool,
     exclude_source: bool,
     libraries: ?[]const u8 = null,
 }) std.meta.Tuple(&.{ LazyPath, LazyPath }) {
-    const cmd = std.Build.Step.Run.create(b, "run dart");
-    cmd.addFileArg(options.dart_exe);
+    const cmd = cmd: {
+        if (options.dart_exe) |dart_exe| {
+            const dart_cmd = std.Build.Step.Run.create(b, "run dart");
+            dart_cmd.addFileArg(dart_exe);
+            break :cmd dart_cmd;
+        } else {
+            const dart_cmd = b.addSystemCommand(&.{"dart"});
+            break :cmd dart_cmd;
+        }
+    };
+
     cmd.addPrefixedFileArg("--packages=", options.package_config);
     cmd.addFileArg(options.pkg.path(b, "front_end/tool/compile_platform.dart"));
     cmd.addArg("dart:core");
@@ -1192,13 +1253,21 @@ pub fn genVmPlatform(b: *std.Build, options: struct {
 }
 
 pub fn gen_kernel_service(b: *std.Build, options: struct {
-    dart_exe: LazyPath,
+    dart_exe: ?LazyPath,
     pkg: LazyPath,
     package_config: LazyPath,
     vm_platform_strong: LazyPath,
 }) LazyPath {
-    const cmd = std.Build.Step.Run.create(b, "run dart");
-    cmd.addFileArg(options.dart_exe);
+    const cmd = cmd: {
+        if (options.dart_exe) |dart_exe| {
+            const dart_cmd = std.Build.Step.Run.create(b, "run dart");
+            dart_cmd.addFileArg(dart_exe);
+            break :cmd dart_cmd;
+        } else {
+            const dart_cmd = b.addSystemCommand(&.{"dart"});
+            break :cmd dart_cmd;
+        }
+    };
     cmd.addPrefixedFileArg("--packages=", options.package_config);
     cmd.addFileArg(options.pkg.path(b, "vm/bin/gen_kernel.dart"));
     cmd.addPrefixedFileArg("--packages=", options.package_config);
@@ -1286,20 +1355,20 @@ pub const PackageConfigStep = struct {
         const cache_path = b.pathJoin(&.{ "o", &digest });
 
         var cache_dir = b.cache_root.handle.makeOpenPath(cache_path, .{}) catch |err| {
-            return step.fail("unable to make path '{}{s}': {s}", .{
+            return step.fail("unable to make path '{f}{s}': {s}", .{
                 b.cache_root, cache_path, @errorName(err),
             });
         };
         defer cache_dir.close();
 
         var file = cache_dir.createFile("package_config.json", .{}) catch |err| {
-            return step.fail("unable to create file '{}{s}': {s}", .{
+            return step.fail("unable to create file '{f}{s}': {s}", .{
                 b.cache_root, "package_config.json", @errorName(err),
             });
         };
         defer file.close();
-        // var writer = std.io.bufferedWriter();
-        var stream = std.json.writeStream(file.writer(), .{ .whitespace = .indent_2 });
+
+        var stream = std.json.writeStream(file.deprecatedWriter(), .{ .whitespace = .indent_2 });
         defer stream.deinit();
 
         try stream.beginObject();
@@ -1330,7 +1399,6 @@ pub const PackageConfigStep = struct {
         }
         try stream.endArray();
         try stream.endObject();
-        // try writer.flush();
         try man.writeManifest();
     }
 };

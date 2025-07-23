@@ -24,13 +24,14 @@ pub fn main() !void {
         .allocator = allocator,
     }) catch |err| {
         // Report useful error and exit.
-        diag.report(std.io.getStdErr().writer(), err) catch {};
+        var buffer: [1024]u8 = undefined;
+        var writer = std.fs.File.stderr().writer(&buffer).interface;
+        diag.report(&writer, err) catch {};
         return err;
     };
     defer res.deinit();
 
-    const stderr = std.io.getStdErr().writer();
-
+    const stderr = std.fs.File.stderr().deprecatedWriter();
     const version_str = res.args.version_str orelse {
         _ = try stderr.write("--version_str not specified\n");
         return error.InvalidArgument;
@@ -60,7 +61,7 @@ pub fn main() !void {
         return err;
     };
     defer output_file.close();
-    var output_writer = std.io.bufferedWriter(output_file.writer());
+    var output_writer = std.io.bufferedWriter(output_file.deprecatedWriter());
 
     const files = res.positionals[0];
     if (files.len == 0) {
@@ -116,8 +117,7 @@ fn makeSnapshotHashString(runtime_dir: []const u8, vm_snapshot_files: []const []
     }
     var out: [16]u8 = undefined;
     hash.final(&out);
-    const formatter = std.fmt.fmtSliceHexLower(&out);
-    return std.fmt.allocPrint(allocator, "{}", .{formatter});
+    return &std.fmt.bytesToHex(&out, .lower);
 }
 
 fn makeBuildTimeString() ![]const u8 {

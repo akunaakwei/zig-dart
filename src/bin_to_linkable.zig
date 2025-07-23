@@ -29,12 +29,14 @@ pub fn main() !void {
         .allocator = allocator,
     }) catch |err| {
         // Report useful error and exit.
-        diag.report(std.io.getStdErr().writer(), err) catch {};
+        var buffer: [1024]u8 = undefined;
+        var writer = std.fs.File.stderr().writer(&buffer).interface;
+        diag.report(&writer, err) catch {};
         return err;
     };
     defer res.deinit();
 
-    const stderr = std.io.getStdErr().writer();
+    const stderr = std.fs.File.stderr().deprecatedWriter();
     const output_path = res.args.output orelse {
         _ = try stderr.write("--output not specified\n");
         return;
@@ -57,7 +59,9 @@ pub fn main() !void {
     const target_query = Target.Query.parse(.{
         .arch_os_abi = target_str,
     }) catch {
-        _ = try stderr.write("could not parse target\n");
+        var buf: [128]u8 = undefined;
+        const line = try std.fmt.bufPrint(&buf, "could not parse {s} as target\n", .{target_str});
+        _ = try stderr.write(line);
         return;
     };
     const target = std.zig.system.resolveTargetQuery(target_query) catch {
@@ -70,14 +74,14 @@ pub fn main() !void {
         return err;
     };
     defer input_file.close();
-    const input = input_file.reader();
+    const input = input_file.deprecatedReader();
 
     const output_file = std.fs.Dir.createFile(std.fs.cwd(), output_path, .{}) catch |err| {
         _ = try stderr.write("Failed to create output file\n");
         return err;
     };
     defer output_file.close();
-    var output = std.io.bufferedWriter(output_file.writer());
+    var output = std.io.bufferedWriter(output_file.deprecatedWriter());
 
     if (target.os.tag == .macos or target.os.tag == .ios) {
         if (executable) {
