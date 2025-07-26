@@ -1367,9 +1367,13 @@ pub const PackageConfigStep = struct {
             });
         };
         defer file.close();
+        var file_buffer: [1024]u8 = undefined;
+        var file_writer = file.writer(&file_buffer);
 
-        var stream = std.json.writeStream(file.deprecatedWriter(), .{ .whitespace = .indent_2 });
-        defer stream.deinit();
+        var stream: std.json.Stringify = .{
+            .writer = &file_writer.interface,
+            .options = .{ .whitespace = .indent_2 },
+        };
 
         try stream.beginObject();
         try stream.objectField("configVersion");
@@ -1399,6 +1403,7 @@ pub const PackageConfigStep = struct {
         }
         try stream.endArray();
         try stream.endObject();
+        try file_writer.interface.flush();
         try man.writeManifest();
     }
 };
