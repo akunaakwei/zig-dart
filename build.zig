@@ -82,6 +82,7 @@ pub fn build(b: *std.Build) void {
     dart_patch.addPatch(b.path("patch/0003-fix-double-conversion-include.patch"));
     dart_patch.addPatch(b.path("patch/0004-fix-msvc-only.patch"));
     dart_patch.addPatch(b.path("patch/0005-va-args.patch"));
+    dart_patch.addPatch(b.path("patch/0006-get-from-overlapped.patch"));
     const runtime = dart_patch.getDirectory();
     b.addNamedLazyPath("runtime", runtime);
 

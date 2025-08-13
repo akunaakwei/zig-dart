@@ -1,0 +1,14 @@
+4045365f31bfba9586bb501a6334ba940ddff562
+diff --git a/runtime/bin/eventhandler_win.cc b/runtime/bin/eventhandler_win.cc
+index 3b933c984e2..8a3a0b747ff 100644
+--- a/runtime/bin/eventhandler_win.cc
++++ b/runtime/bin/eventhandler_win.cc
+@@ -157,7 +157,7 @@ std::unique_ptr<OverlappedBuffer> OverlappedBuffer::AllocateConnectBuffer(
+ 
+ OverlappedBuffer* OverlappedBuffer::GetFromOverlapped(OVERLAPPED* overlapped) {
+   OverlappedBuffer* buffer =
+-      CONTAINING_RECORD(overlapped, OverlappedBuffer, overlapped_);
++    reinterpret_cast<OverlappedBuffer*>(reinterpret_cast<char*>(overlapped) - offsetof(OverlappedBuffer, overlapped_));
+   return buffer;
+ }
+ 
