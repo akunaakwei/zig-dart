@@ -61,8 +61,8 @@
             .hash = "z-1.3.1-bMk6UWILAACBq0z3H3a5qZNyCx0O7BVePzsBnlIv4zVr",
         },
         .boringssl = .{
-            .url = "https://github.com/akunaakwei/zig-boringssl/archive/1e71bdceadd9b7424efbe13a181e4bf1c5e90bac.tar.gz",
-            .hash = "boringssl-0.0.0-wabiQY6bAgAVxHhRGXNt_pefP1HYBk9YMsxp8Ymq06zf",
+            .url = "https://github.com/akunaakwei/zig-boringssl/archive/78d8745a3a86f694b924df0200a261f9f0c2e39a.tar.gz",
+            .hash = "boringssl-0.0.0-wabiQdC0AgBh6EndYbIJjQSJLBR4i_C6ztDkZxmoYGSL",
         },
         .clap = .{
             .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.11.0.tar.gz",
